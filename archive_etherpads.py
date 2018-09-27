@@ -143,3 +143,4 @@ if __name__ == '__main__':
 
     edges = pd.DataFrame(pads.edges, columns=['from', 'to'])
     edges.to_csv("pads/edges.csv", encoding='utf-8')
+    logger.info('Successfully wrote edges csv')
