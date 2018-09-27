@@ -15,7 +15,7 @@ import requests
 
 logging.basicConfig(
     format='%(asctime)s %(levelname)s:%(message)s',
-    level=logging.DEBUG, datefmt='%I:%M:%S'
+    level=logging.INFO, datefmt='%I:%M:%S'
 )
 logger = logging.getLogger('padgrapper')
 logger.setLevel(logging.INFO)
@@ -65,7 +65,11 @@ def get_pad_content(url):
             'IGNORED {} is not a valid pad url'.format(url.encode('utf-8')))
         return []
 
-    r = requests.get(url + '/export/html')
+    try:
+        r = requests.get(url + '/export/html')
+    except requests.ConnectionError as e:
+        logger.error(e.message)
+        return []
 
     # create path
     path = PosixPath(
@@ -138,4 +142,4 @@ if __name__ == '__main__':
     pads.follow_links(pads.base_url)
 
     edges = pd.DataFrame(pads.edges, columns=['from', 'to'])
-    edges.to_csv("pads/edges.csv")
+    edges.to_csv("pads/edges.csv", encoding='utf-8')
