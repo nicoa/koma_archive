@@ -17,8 +17,7 @@ __Disclaimer__: Das ist ganz und gar nicht ausgereift, noch durchdacht, noch get
 Ebenfalls möglich: aus IPython heraus
 
     from archive_etherpads import PadGrabber
-    pads = PadGrabber(
-        "https://fachschaften.rwth-aachen.de/etherpad/p/KoMaAPSammlung")
+    pads = PadGrabber("https://fachschaften.rwth-aachen.de/etherpad/p/DEMOPAD")
     pads.follow_links(pads.base_url)
     edges = pd.DataFrame(pads.edges, columns=['from', 'to'])
     edges.to_csv("pads/edges.csv", encoding='utf-8')
