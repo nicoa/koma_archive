@@ -3,7 +3,6 @@
 pads/
 
 
-
 # end added by user
 
 
@@ -139,4 +138,3 @@ pip-selfcheck.json
 
 
 # End of https://www.gitignore.io/api/python
-pads2
