@@ -19,6 +19,7 @@
         [ inputs.poetry2nix.overlays.default self.overlays.default ];
 
       overlays = rec {
+        poetry2nix = inputs.poetry2nix.overlays.default;
         koma-archive = (final: prev: {
           koma-archive =
             final.poetry2nix.mkPoetryApplication { projectDir = ./.; };
