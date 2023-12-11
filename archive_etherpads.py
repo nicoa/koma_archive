@@ -1,6 +1,7 @@
 """Archive Etherpads. Aggresively go through all links.
 """
 import logging
+import sys
 import os
 
 import bs4
@@ -161,6 +162,14 @@ class PadGrabber(object):
 
 def main():
     destination = "../koma-pad-archiv"
+    base_url = os.environ.get("PAD_BASE_URL")
+
+    if not base_url:
+        logger.error(
+            "base URL is empty, please set the `PAD_BASE_URL' environment variable"
+        )
+        sys.exit(1)
+
     pads = PadGrabber(os.environ.get("PAD_BASE_URL"))
     pads.follow_links(pads.base_url, destination)
 

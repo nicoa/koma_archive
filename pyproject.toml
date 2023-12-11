@@ -8,7 +8,7 @@ repository = "https://github.com/nicoa/koma_archive"
 packages = [{include = "archive_etherpads.py" }]
 
 [tool.poetry.scripts]
-koma_archive = "archive_etherpads:main"
+koma-archive = "archive_etherpads:main"
 
 [tool.poetry.dependencies]
 python = "^3.10"
