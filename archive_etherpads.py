@@ -69,6 +69,7 @@ def get_pad_content(url, destination):
 
     try:
         r = requests.get(url + "/export/html")
+        r.encoding = "utf-8"
     except requests.ConnectionError as e:
         logger.error(e.message)
         return []
@@ -108,16 +109,15 @@ def get_pad_content(url, destination):
     else:
         pass
 
-    # # write file  # TODO: re-write
-    # if not path.exists():
-    #     with open(path.as_posix(), 'w') as fh:
-    #         fh.write(requests.get(url + '/export/txt').text.encode('utf-8'))
-    # else:
-    #     logger.debug("path exists already, not saving pad")
+    response = requests.get(url + "/export/txt")
+    response.encoding = "utf-8"
+
     with open(path.as_posix(), "w") as fh:
-        fh.write(requests.get(url + "/export/txt").text.encode("utf-8"))
+        fh.write(response.text)
+
     with open(html_path.as_posix(), "w") as fh:
-        fh.write(r.text.encode("utf-8"))
+        fh.write(r.text)
+
     # call other files
     soup = bs4.BeautifulSoup(r.text, features="html.parser")
     links = [a.get("href") for a in soup.find_all("a")]
