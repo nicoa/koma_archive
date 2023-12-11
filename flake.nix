@@ -15,17 +15,23 @@
     utils.lib.mkFlake {
       inherit self inputs;
 
-      sharedOverlays = [ inputs.poetry2nix.overlays.default ];
+      sharedOverlays =
+        [ inputs.poetry2nix.overlays.default self.overlays.default ];
+
+      overlays = rec {
+        koma-archive = (final: prev: {
+          koma-archive =
+            final.poetry2nix.mkPoetryApplication { projectDir = ./.; };
+        });
+
+        default = koma-archive;
+      };
 
       outputsBuilder = channels: {
-        packages = let
-          package = channels.nixpkgs.poetry2nix.mkPoetryApplication {
-            projectDir = ./.;
-          };
-        in {
-          default = package;
-          koma_archive = package;
-        };
+
+        packages =
+          let exports = utils.lib.exportPackages self.overlays channels;
+          in exports // { default = exports.koma-archive; };
 
         devShells.default = let
           poetryEnv =
