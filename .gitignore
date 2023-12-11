@@ -144,3 +144,5 @@ pads2
 
 #*#
 *~
+/result
+/.direnv/

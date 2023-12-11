@@ -3,9 +3,20 @@ name = "koma_archive"
 version = "0.1.0"
 description = "privately archive the old etherpad files as html"
 authors = ["Nico Albers <n.albers.hh@gmail.com>"]
+readme = "README.md"
+repository = "https://github.com/nicoa/koma_archive"
+packages = [{include = "archive_etherpads.py" }]
+
+[tool.poetry.scripts]
+koma_archive = "archive_etherpads:main"
 
 [tool.poetry.dependencies]
 python = "^3.10"
 requests = "*"
 beautifulsoup4 = "*"
 pandas = "*"
+pathlib2 = "*"
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"

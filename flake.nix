@@ -18,11 +18,21 @@
       sharedOverlays = [ inputs.poetry2nix.overlays.default ];
 
       outputsBuilder = channels: {
+        packages = let
+          package = channels.nixpkgs.poetry2nix.mkPoetryApplication {
+            projectDir = ./.;
+          };
+        in {
+          default = package;
+          koma_archive = package;
+        };
+
         devShells.default = let
           poetryEnv =
             channels.nixpkgs.poetry2nix.mkPoetryEnv { projectDir = ./.; };
-        in poetryEnv.env.overrideAttrs
-        (oldAttrs: { buildInputs = [ channels.nixpkgs.poetry ]; });
+        in poetryEnv.env.overrideAttrs (oldAttrs: {
+          buildInputs = [ channels.nixpkgs.poetry channels.nixpkgs.black ];
+        });
       };
     };
 }
