@@ -10,6 +10,12 @@ import pandas as pd
 from pathlib2 import PosixPath
 import requests
 
+
+HEADERS = {
+    "User-Agent": "KoMa-pad-archiver/0.1.0 (https://github.com/nicoa/koma_archive)"
+}
+
+
 logging.basicConfig(
     format="%(asctime)s %(levelname)s:%(message)s",
     level=logging.INFO,
@@ -69,7 +75,7 @@ def get_pad_content(url, destination):
         return []
 
     try:
-        r = requests.get(url + "/export/html")
+        r = requests.get(url + "/export/html", headers=HEADERS)
         r.encoding = "utf-8"
     except requests.ConnectionError as e:
         logger.error(e)
@@ -118,7 +124,7 @@ def get_pad_content(url, destination):
     else:
         pass
 
-    response = requests.get(url + "/export/txt")
+    response = requests.get(url + "/export/txt", headers=HEADERS)
     response.encoding = "utf-8"
 
     with open(path.as_posix(), "w") as fh:
