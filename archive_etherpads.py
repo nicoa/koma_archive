@@ -1,10 +1,4 @@
-"""Archive Etherpads. Aggresively go throug all links.
-
-Attributes:
-
-Warnings:
-    This is python2 (raw_input etc). But, still in mind one might switch at
-    some time, so used paths and mostly easy convertible syntax.
+"""Archive Etherpads. Aggresively go through all links.
 """
 import logging
 import os
@@ -36,7 +30,7 @@ def confirm(prompt=None, resp=False):
         prompt = '%s [%s]|%s: ' % (prompt, 'n', 'y')
 
     while True:
-        ans = raw_input(prompt)
+        ans = input(prompt)
         if not ans:
             return resp
         if ans not in ['y', 'Y', 'n', 'N']:
@@ -89,10 +83,10 @@ def get_pad_content(url, destination):
     # create path
     path = PosixPath(
         "/".join(
-            [destination] + map(_remove_bad_words, url.split("/p/"))) + '.txt')
+            [destination] + list(map(_remove_bad_words, url.split("/p/")))) + '.txt')
     html_path = PosixPath(
         "/".join(
-            [destination] + map(_remove_bad_words, url.split("/p/"))) +
+            [destination] + list(map(_remove_bad_words, url.split("/p/")))) +
         '.html')
     if len(path.parts) < 3:
         logger.warn("too few parts in path {}".format(path.as_posix()))
@@ -118,7 +112,7 @@ def get_pad_content(url, destination):
                 fh.write(r.text.encode('utf-8'))
     # call other files
     soup = bs4.BeautifulSoup(r.text, features="html.parser")
-    links = map(lambda a: a.get('href'), soup.find_all('a'))
+    links = [a.get('href') for a in soup.find_all('a')]
     return links
 
 
