@@ -1,0 +1,11 @@
+[tool.poetry]
+name = "koma_archive"
+version = "0.1.0"
+description = "privately archive the old etherpad files as html"
+authors = ["Nico Albers <n.albers.hh@gmail.com>"]
+
+[tool.poetry.dependencies]
+python = "^3.10"
+requests = "*"
+beautifulsoup4 = "*"
+pandas = "*"
