@@ -71,7 +71,7 @@ def get_pad_content(url, destination):
         r = requests.get(url + "/export/html")
         r.encoding = "utf-8"
     except requests.ConnectionError as e:
-        logger.error(e.message)
+        logger.error(e)
         return []
 
     if r.status_code != 200:
