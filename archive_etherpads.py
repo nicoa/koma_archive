@@ -1,6 +1,7 @@
 """Archive Etherpads. Aggresively go through all links.
 """
 import logging
+import time
 import sys
 import os
 
@@ -74,7 +75,15 @@ def get_pad_content(url, destination):
         logger.error(e)
         return []
 
-    if r.status_code != 200:
+    if r.status_code == 429:
+        delay = int(r.headers["Retry-After"])
+        logger.warn(
+            "got status code 429 (Too Many Requests), waiting for {} seconds".format(
+                delay
+            )
+        )
+        time.sleep(delay)
+    elif r.status_code != 200:
         new_url = "{}/p/{}_seenotrettung".format(
             "https://fachschaften.rwth-aachen.de/etherpad", url.split("/")[-1]
         )
