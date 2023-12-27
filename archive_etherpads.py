@@ -185,7 +185,7 @@ def main():
         )
         sys.exit(1)
 
-    pads = PadGrabber(os.environ.get("PAD_BASE_URL"))
+    pads = PadGrabber(base_url)
     pads.follow_links(pads.base_url, destination)
 
     edges = pd.DataFrame(pads.edges, columns=["from", "to"])
