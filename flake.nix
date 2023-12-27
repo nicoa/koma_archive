@@ -1,3 +1,4 @@
+# package the pad archiver as a flake for the Nix package manager (https://nixos.org)
 {
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-23.11";
