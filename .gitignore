@@ -140,3 +140,9 @@ pip-selfcheck.json
 
 # End of https://www.gitignore.io/api/python
 pads2
+
+
+#*#
+*~
+/result
+/.direnv/
