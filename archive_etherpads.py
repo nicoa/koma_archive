@@ -1,25 +1,36 @@
-"""Archive Etherpads. Aggresively go through all links.
 """
+Archive Etherpads recursively. Aggressively go through all new links with minimal sanity checks for real pads.
+Stores the pad contents as files in separate folders for each server. Also stores a list of edges that link from pads to other pads.
+
+Find the full projekt on: https://github.com/nicoa/koma_archive.
+"""
+
+import csv
 import logging
-import time
-import sys
 import os
+import sys
+import time
+from pathlib import Path
 
 import bs4
-import pandas as pd
-from pathlib2 import PosixPath
 import requests
 
 
+CREATE_ALL_PATHS = False  # if True, do not ask for creating new directories
 HEADERS = {
     "User-Agent": "KoMa-pad-archiver/0.1.0 (https://github.com/nicoa/koma_archive)"
 }
+TIMEOUT = 3
 
 
 logging.basicConfig(
     format="%(asctime)s %(levelname)s:%(message)s",
     level=logging.INFO,
     datefmt="%I:%M:%S",
+    handlers=[  # Log to file and console
+        logging.FileHandler("logs.log"),
+        logging.StreamHandler(),
+    ],
 )
 logger = logging.getLogger("padgrapper")
 logger.setLevel(logging.INFO)
@@ -34,120 +45,122 @@ def confirm(prompt=None, resp=False):
         prompt = "Confirm"
 
     if resp:
-        prompt = "%s [%s]|%s: " % (prompt, "y", "n")
+        prompt = f"{prompt} [y]|n: "
     else:
-        prompt = "%s [%s]|%s: " % (prompt, "n", "y")
+        prompt = f"{prompt} [n]|y: "
 
+    out = None
     while True:
         ans = input(prompt)
-        if not ans:
-            return resp
-        if ans not in ["y", "Y", "n", "N"]:
+        if ans == "":
+            out = resp
+        elif ans.lower() == "y":
+            out = True
+        elif ans.lower() == "n":
+            out = False
+        else:
             print("please enter y or n.")
             continue
-        if ans == "y" or ans == "Y":
-            return True
-        if ans == "n" or ans == "N":
-            return False
+        return out
 
 
-def _remove_bad_words(url):
-    url = url.replace("/etherpad/p/", "/p/")  # not having two variants
-    url = "_".join(
-        x
-        for x in (
-            url.replace("https", "_")
-            .replace("http", "_")
+def _remove_bad_words(url_list):
+    """Sanitize the urls in url_list. Replace bad words by an underscore."""
+    assert isinstance(url_list, list)
+    good_list = []
+    for url in url_list:
+        url = url.strip()  # removes leading and trailing blanks
+        url = url.replace("/etherpad/p/", "/p/")  # not having two variants
+        url = (
+            url.replace("https:", "_")
+            .replace("http:", "_")
             .replace(":", "_")
             .replace("/", "_")
             .replace(".", "_")
-            .split("_")
         )
-        if x != ""
-    )
-    return url
+        # removes double underscores and leading/trailing underscores
+        url = "_".join(x for x in url.split("_") if x != "")
+        good_list.append(url)
+    return good_list
 
 
 def get_pad_content(url, destination):
-    """Read Pad content and write to HTML, after that return found links."""
+    """Read Pad content and write to HTML and txt, after that return found links."""
     if "/p/" not in url:
-        logger.info("IGNORED {} is not a valid pad url".format(url.encode("utf-8")))
+        logger.info(f"IGNORED {url} is not a valid pad url")
         return []
 
     try:
-        r = requests.get(url + "/export/html", headers=HEADERS)
+        response = requests.get(f"{url}/export/txt", headers=HEADERS, timeout=TIMEOUT)
+        response.encoding = "utf-8"
+        r = requests.get(f"{url}/export/html", headers=HEADERS, timeout=TIMEOUT)
         r.encoding = "utf-8"
+    except requests.Timeout as e:
+        logger.error(f"Timeout for url '{url}': {e}", stack_info=True)
+        return []
     except requests.ConnectionError as e:
-        logger.error(e)
+        logger.error(f"ConnectionError for url '{url}': {e}", stack_info=True)
         return []
 
     if r.status_code == 429:
         delay = int(r.headers["Retry-After"])
-        logger.warn(
-            "got status code 429 (Too Many Requests), waiting for {} seconds".format(
-                delay
-            )
+        logger.warning(
+            f"got status code 429 (Too Many Requests), waiting for {delay} seconds, then retrying"
         )
         time.sleep(delay)
+        logger.info(f"Retrying {url} now")
+        return get_pad_content(url, destination)  # retry after delay
     elif r.status_code != 200:
-        new_url = "{}/p/{}_seenotrettung".format(
-            "https://fachschaften.rwth-aachen.de/etherpad", url.split("/")[-1]
-        )
-        s = "{} -> {}".format(url, new_url)
-        logger.warn("got status code {}, consider moving {}".format(r.status_code, url))
-        if confirm("give Time to save?", resp=True):
-            print(s)
-            confirm("Done?")
-            return [new_url]
-        else:
-            return []
-    # TODO: Don't hard-code URLs
+        logger.warning(f"got status code {r.status_code}, ignoring {url}")
+        return []
+        #new_url = "{}/p/{}_seenotrettung".format(
+        #    "https://fachschaften.rwth-aachen.de/etherpad", url.split("/")[-1]
+        #)
+        #s = f"{url} -> {new_url}"
+        #logger.warning(f"got status code {r.status_code}, consider moving {url}")
+        #if False:  # confirm("give Time to save?", resp=True):
+        #    print(s)
+        #    confirm("Done?")
+        #    return [new_url]
+        #else:
+        #    return []
+        # TODO: Don't hard-code URLs
+        # TODO: What is the seenotrettung about?
 
     # create path
-    path = PosixPath(
-        "/".join([destination] + list(map(_remove_bad_words, url.split("/p/"))))
-        + ".txt"
-    )
-    html_path = PosixPath(
-        "/".join([destination] + list(map(_remove_bad_words, url.split("/p/"))))
-        + ".html"
-    )
+    path = destination / Path(*_remove_bad_words(url.split("/p/"))).with_suffix(".txt")
+    html_path = path.with_suffix(".html")
     if len(path.parts) < 3:
-        logger.warn("too few parts in path {}".format(path.as_posix()))
+        logger.warning(f"too few parts in path '{path}'")
         return []
 
     if not path.parent.exists():
-        logger.info("create path {}".format(path.parent.as_posix()))
-        if not confirm():
+        if not CREATE_ALL_PATHS and not confirm(f"Create dirs '{path.parent}'?"):
+            logger.info(f"do NOT create path '{path.parent}'")
             return []
-        os.makedirs(path.parent.as_posix())
-    else:
-        pass
+        else:
+            logger.info(f"create path '{path.parent}'")
+            path.parent.mkdir(parents=True)
 
-    response = requests.get(url + "/export/txt", headers=HEADERS)
-    response.encoding = "utf-8"
-
-    with open(path.as_posix(), "w") as fh:
+    with open(path, "w") as fh:
         fh.write(response.text)
+    with open(html_path, "w") as fh:
+        fh.write(r.text.replace(' rel="noreferrer noopener"', ""))
 
-    with open(html_path.as_posix(), "w") as fh:
-        fh.write(r.text)
-
-    # call other files
+    # extract links
     soup = bs4.BeautifulSoup(r.text, features="html.parser")
     links = [a.get("href") for a in soup.find_all("a")]
     return links
 
 
-class PadGrabber(object):
-    """docstring for PadGrabber."""
+class PadGrabber:
+    """Stores found urls and connections between these urls."""
 
     def __init__(self, url):
         """Initialize PadGrabber.
 
         Args:
             url (basestring): Must be provided. Base url to start.
-
         """
         super(PadGrabber, self).__init__()
         self.edges = []
@@ -155,24 +168,35 @@ class PadGrabber(object):
         self.urls = []
 
     def follow_links(self, url, destination):
-        """Main, call get_pad_content recursively on returned links."""
+        """Main function, calls get_pad_content recursively on returned links."""
+        logger.info(f"STARTED {url}")
         if url in self.urls:
             logger.info("IGNORE: url already contained")
             return
         self.urls.append(url)
+
         links = get_pad_content(url, destination)
         for link in links:
-            if link:
-                pass
-            else:
-                continue  # catch None
+            if not link:  # catch None
+                continue
             verts = (
-                "/".join(map(_remove_bad_words, url.split("/p/"))),
-                "/".join(map(_remove_bad_words, link.split("/p/"))),
+                "/".join(_remove_bad_words(url.split("/p/"))),
+                "/".join(_remove_bad_words(link.split("/p/"))),
             )
             self.edges.append(verts)
-            logger.info("STARTED {}".format(link.encode("utf-8")))
             self.follow_links(link, destination)
+
+    def store_edges(self, destination, encoding="utf-8", filename="edges.csv"):
+        """Stores the extracted connections between pads as csv file."""
+        # numbered_edges = [(0, e1_start, e1_end), (1, e2_start, e2_end), ...]
+        numbered_edges = [(i, *edge) for i, edge in enumerate(self.edges)]
+        filepath = Path(destination) / filename
+        filepath.parent.mkdir(parents=True, exist_ok=True)  # make sure the dir exists
+        with open(filepath, "w", newline="") as fh:
+            writer = csv.writer(fh, delimiter=",")
+            writer.writerow(["", "from", "to"])  # write header
+            writer.writerows(numbered_edges)  # write edges
+        logger.info(f"Successfully wrote edges csv to '{filepath}'")
 
 
 def main():
@@ -181,16 +205,13 @@ def main():
 
     if not base_url:
         logger.error(
-            "base URL is empty, please set the `PAD_BASE_URL' environment variable"
+            "base URL is empty, please set the 'PAD_BASE_URL' environment variable"
         )
         sys.exit(1)
 
     pads = PadGrabber(base_url)
     pads.follow_links(pads.base_url, destination)
-
-    edges = pd.DataFrame(pads.edges, columns=["from", "to"])
-    edges.to_csv("{}/edges.csv".format(destination), encoding="utf-8")
-    logger.info("Successfully wrote edges csv")
+    pads.store_edges(destination, filename="edges.csv")
 
 
 if __name__ == "__main__":
