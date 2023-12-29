@@ -1,25 +1,36 @@
-"""Archive Etherpads. Aggresively go through all links."""
+"""
+Archive Etherpads recursively. Aggressively go through all new links with minimal sanity checks for real pads.
+Stores the pad contents as files in separate folders for each server. Also stores a list of edges that link from pads to other pads.
+
+Find the full projekt on: https://github.com/nicoa/koma_archive.
+"""
+
+import csv
 import logging
-import time
-import sys
 import os
+import sys
+import time
+from pathlib import Path
 
 import bs4
-import pandas as pd
-from pathlib import PosixPath
 import requests
 
 
+CREATE_ALL_PATHS = False  # if True, do not ask for creating new directories
 HEADERS = {
     "User-Agent": "KoMa-pad-archiver/0.1.0 (https://github.com/nicoa/koma_archive)"
 }
 TIMEOUT = 3
 
+
 logging.basicConfig(
     format="%(asctime)s %(levelname)s:%(message)s",
     level=logging.INFO,
     datefmt="%I:%M:%S",
-    filename="logs.log",
+    handlers=[  # Log to file and console
+        logging.FileHandler("logs.log"),
+        logging.StreamHandler(),
+    ],
 )
 logger = logging.getLogger("padgrapper")
 logger.setLevel(logging.INFO)
@@ -33,56 +44,57 @@ def confirm(prompt=None, resp=False):
     if prompt is None:
         prompt = "Confirm"
 
-    if resp:  # TODO MAKE BETTER: use f-strings
-        prompt = "%s [%s]|%s: " % (prompt, "y", "n")
+    if resp:
+        prompt = f"{prompt} [y]|n: "
     else:
-        prompt = "%s [%s]|%s: " % (prompt, "n", "y")
+        prompt = f"{prompt} [n]|y: "
 
+    out = None
     while True:
         ans = input(prompt)
-        if not ans:
-            return resp
-        if ans.lower() not in ["y", "n"]:
+        if ans == "":
+            out = resp
+        elif ans.lower() == "y":
+            out = True
+        elif ans.lower() == "n":
+            out = False
+        else:
             print("please enter y or n.")
             continue
-        if ans.lower() == "y":  # TODO MAKE BETTER: if not ans; == y; elif == n; else print(please enter....) cont
-            return True
-        if ans.lower() == "n":
-            return False
+        return out
 
 
-def _remove_bad_words(url):
-    if isinstance(url, list):  # TODO MAKE BETTER
-        # allows to use this for lists instead of `list(map(_remove_bad_words, urls))`
-        return [_remove_bad_words(u) for u in url]
-
-    url = url.replace("/etherpad/p/", "/p/")  # not having two variants
-    url = "_".join(
-        x
-        for x in (
-            url.replace("https", "_")
-            .replace("http", "_")
+def _remove_bad_words(url_list):
+    """Sanitize the urls in url_list. Replace bad words by an underscore."""
+    assert isinstance(url_list, list)
+    good_list = []
+    for url in url_list:
+        url = url.strip()  # removes leading and trailing blanks
+        url = url.replace("/etherpad/p/", "/p/")  # not having two variants
+        url = (
+            url.replace("https:", "_")
+            .replace("http:", "_")
             .replace(":", "_")
             .replace("/", "_")
             .replace(".", "_")
-            .split("_")
         )
-        if x != ""
-    )
-    return url
+        # removes double underscores and leading/trailing underscores
+        url = "_".join(x for x in url.split("_") if x != "")
+        good_list.append(url)
+    return good_list
 
 
 def get_pad_content(url, destination):
-    """Read Pad content and write to HTML, after that return found links."""
+    """Read Pad content and write to HTML and txt, after that return found links."""
     if "/p/" not in url:
-        logger.info(f"IGNORED {url.encode('utf-8')} is not a valid pad url")
+        logger.info(f"IGNORED {url} is not a valid pad url")
         return []
 
     try:
+        response = requests.get(f"{url}/export/txt", headers=HEADERS, timeout=TIMEOUT)
+        response.encoding = "utf-8"
         r = requests.get(f"{url}/export/html", headers=HEADERS, timeout=TIMEOUT)
         r.encoding = "utf-8"
-        #r_html = requests.get(f"{url}/export/html", timeout=3)
-        #exported_text = requests.get(f"{url}/export/txt", timeout=TIMEOUT).text
     except requests.Timeout as e:
         logger.error(f"Timeout for url '{url}': {e}", stack_info=True)
         return []
@@ -92,66 +104,63 @@ def get_pad_content(url, destination):
 
     if r.status_code == 429:
         delay = int(r.headers["Retry-After"])
-        logger.warn(
-            f"got status code 429 (Too Many Requests), waiting for {delay} seconds"
+        logger.warning(
+            f"got status code 429 (Too Many Requests), waiting for {delay} seconds, then retrying"
         )
         time.sleep(delay)
+        logger.info(f"Retrying {url} now")
+        return get_pad_content(url, destination)  # retry after delay
     elif r.status_code != 200:
-        new_url = "{}/p/{}_seenotrettung".format(
-            "https://fachschaften.rwth-aachen.de/etherpad", url.split("/")[-1]
-        )
-        s = f"{url} -> {new_url}"
-        logger.warning(f"got status code {r.status_code}, consider moving {url}")
-        if False:  # confirm("give Time to save?", resp=True):
-            print(s)
-            confirm("Done?")
-            return [new_url]
-        else:
-            return []
-    # TODO: Don't hard-code URLs
-    # TODO: What is the seenotrettung about?
+        logger.warning(f"got status code {r.status_code}, ignoring {url}")
+        return []
+        #new_url = "{}/p/{}_seenotrettung".format(
+        #    "https://fachschaften.rwth-aachen.de/etherpad", url.split("/")[-1]
+        #)
+        #s = f"{url} -> {new_url}"
+        #logger.warning(f"got status code {r.status_code}, consider moving {url}")
+        #if False:  # confirm("give Time to save?", resp=True):
+        #    print(s)
+        #    confirm("Done?")
+        #    return [new_url]
+        #else:
+        #    return []
+        # TODO: Don't hard-code URLs
+        # TODO: What is the seenotrettung about?
 
     # create path
-    path = PosixPath(  # TODO MAKE BETTER: do not join paths like this. Do: Path(destination) / Path(*_remove_bad_words(...)).with_suffix(".txt")
-        "/".join([destination] + _remove_bad_words(url.split("/p/"))) + ".txt"
-    )
-    html_path = PosixPath(  # TODO MAKE BETTER
-        "/".join([destination] + _remove_bad_words(url.split("/p/"))) + ".html"
-    )
-    if len(path.parts) < 3:  # TODO MAKE BETTER: remove .as_posix()
-        logger.warning(f"too few parts in path {path.as_posix()}")
+    path = destination / Path(*_remove_bad_words(url.split("/p/"))).with_suffix(".txt")
+    html_path = path.with_suffix(".html")
+    if len(path.parts) < 3:
+        logger.warning(f"too few parts in path '{path}'")
         return []
 
     if not path.parent.exists():
-        if not confirm(f"Create dirs '{path.parent}'?"):
+        if not CREATE_ALL_PATHS and not confirm(f"Create dirs '{path.parent}'?"):
             logger.info(f"do NOT create path '{path.parent}'")
             return []
         else:
             logger.info(f"create path '{path.parent}'")
-            # TODO MAKE BETTER: path.parent.mkdir(parents=True)
-            os.makedirs(path.parent.as_posix())
+            path.parent.mkdir(parents=True)
 
-    response = requests.get(f"{url}/export/txt", headers=HEADERS, timeout=TIMEOUT)
-    response.encoding = "utf-8"
-    with open(path.as_posix(), "w") as fh:  # TODO MAKE BETTER: remove .as_posix()
+    with open(path, "w") as fh:
         fh.write(response.text)
-    with open(html_path.as_posix(), "w") as fh:  # TODO MAKE BETTER: remove .as_posix()
+    with open(html_path, "w") as fh:
         fh.write(r.text.replace(' rel="noreferrer noopener"', ""))
-    # call other files
+
+    # extract links
     soup = bs4.BeautifulSoup(r.text, features="html.parser")
     links = [a.get("href") for a in soup.find_all("a")]
     return links
 
 
-class PadGrabber(object):
-    """docstring for PadGrabber."""
+class PadGrabber:
+    """Stores found urls and connections between these urls."""
 
     def __init__(self, url):
         """Initialize PadGrabber.
 
         Args:
             url (basestring): Must be provided. Base url to start.
-
         """
         super(PadGrabber, self).__init__()
         self.edges = []
@@ -159,7 +168,8 @@ class PadGrabber(object):
         self.urls = []
 
     def follow_links(self, url, destination):
-        """Main, call get_pad_content recursively on returned links."""
+        """Main function, calls get_pad_content recursively on returned links."""
+        logger.info(f"STARTED {url}")
         if url in self.urls:
             logger.info("IGNORE: url already contained")
             return
@@ -167,18 +177,26 @@ class PadGrabber(object):
 
         links = get_pad_content(url, destination)
         for link in links:
-            if link:  # TODO MAKE BETTER
-                pass
-            else:
-                continue  # catch None
+            if not link:  # catch None
+                continue
             verts = (
                 "/".join(_remove_bad_words(url.split("/p/"))),
                 "/".join(_remove_bad_words(link.split("/p/"))),
             )
             self.edges.append(verts)
-
-            logger.info(f"STARTED {link}")
             self.follow_links(link, destination)
+
+    def store_edges(self, destination, encoding="utf-8", filename="edges.csv"):
+        """Stores the extracted connections between pads as csv file."""
+        # numbered_edges = [(0, e1_start, e1_end), (1, e2_start, e2_end), ...]
+        numbered_edges = [(i, *edge) for i, edge in enumerate(self.edges)]
+        filepath = Path(destination) / filename
+        filepath.parent.mkdir(parents=True, exist_ok=True)  # make sure the dir exists
+        with open(filepath, "w", newline="") as fh:
+            writer = csv.writer(fh, delimiter=",")
+            writer.writerow(["", "from", "to"])  # write header
+            writer.writerows(numbered_edges)  # write edges
+        logger.info(f"Successfully wrote edges csv to '{filepath}'")
 
 
 def main():
@@ -193,10 +211,7 @@ def main():
 
     pads = PadGrabber(base_url)
     pads.follow_links(pads.base_url, destination)
-
-    edges = pd.DataFrame(pads.edges, columns=["from", "to"])
-    edges.to_csv(f"{destination}/edges.csv", encoding="utf-8")
-    logger.info("Successfully wrote edges csv")
+    pads.store_edges(destination, filename="edges.csv")
 
 
 if __name__ == "__main__":
